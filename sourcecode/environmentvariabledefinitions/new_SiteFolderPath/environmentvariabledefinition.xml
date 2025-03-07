@@ -1,0 +1,13 @@
+<environmentvariabledefinition schemaname="new_SiteFolderPath">
+  <description default="The folder path at Sharepoint Site that keeps the utility bills">
+    <label description="The folder path at Sharepoint Site that keeps the utility bills" languagecode="1033" />
+  </description>
+  <displayname default="Site Folder Path ">
+    <label description="Site Folder Path " languagecode="1033" />
+  </displayname>
+  <introducedversion>1.0.0.0</introducedversion>
+  <iscustomizable>1</iscustomizable>
+  <isrequired>0</isrequired>
+  <secretstore>0</secretstore>
+  <type>100000000</type>
+</environmentvariabledefinition>

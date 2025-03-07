@@ -1,0 +1,323 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_sharepointonline_1": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedsharepointonline_587e4"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      },
+      "shared_commondataserviceforapps_1": {
+        "runtimeSource": "embedded",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedcommondataserviceforapps_4529e"
+        },
+        "api": {
+          "name": "shared_commondataserviceforapps"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "Sharepoint Site (new_SharepointSite)": {
+          "defaultValue": "https://mcfscaps.sharepoint.com/sites/techtalk",
+          "type": "String",
+          "metadata": {
+            "schemaName": "new_SharepointSite"
+          }
+        },
+        "Site Folder Path  (new_SiteFolderPath)": {
+          "defaultValue": "UtilityBills",
+          "type": "String",
+          "metadata": {
+            "schemaName": "new_SiteFolderPath",
+            "description": "The folder path at Sharepoint Site that keeps the utility bills"
+          }
+        }
+      },
+      "triggers": {
+        "manual": {
+          "metadata": {
+            "operationMetadataId": "55976d89-ec26-4fae-bfa2-367fdbeb2b5b"
+          },
+          "type": "Request",
+          "kind": "Button",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            }
+          }
+        }
+      },
+      "actions": {
+        "Get_Files_in_the_Folder": {
+          "runAfter": {
+            "Get_List_by_Name_via_SharePoint_API": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "4030f387-bc27-4a93-8882-259e5e6fd56b"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline_1",
+              "operationId": "GetFileItems",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('Sharepoint Site (new_SharepointSite)')",
+              "table": "@body('Get_List_by_Name_via_SharePoint_API')?['d']?['Id']",
+              "folderPath": "@parameters('Site Folder Path  (new_SiteFolderPath)')",
+              "viewScopeOption": "Default",
+              "$filter": "FSObjType eq 0"
+            },
+            "authentication": {
+              "type": "Raw",
+              "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+            }
+          }
+        },
+        "For_each_file": {
+          "foreach": "@outputs('Get_Files_in_the_Folder')?['body/value']",
+          "actions": {
+            "Upload_Document_to_Document_Request_to_Trigger_Processing": {
+              "runAfter": {
+                "Create_a_new_document_request": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "1abbb7df-ad0e-4506-b012-24d753efd79a"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps_1",
+                  "operationId": "PerformBoundAction",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "msfsi_documentrequests",
+                  "actionName": "Microsoft.Dynamics.CRM.msfsi_UploadDocument",
+                  "recordId": "@outputs('Create_a_new_document_request')?['body/msfsi_documentrequestid']",
+                  "item/FileName": "@items('For_each_file')?['{Name}']",
+                  "item/FileBody": "@base64(outputs('Get_file_content_using_path')?['body'])",
+                  "item/FileType": "application/pdf"
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            },
+            "Get_file_content_using_path": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "0c5702e8-91b9-4d34-b983-a7cf0ec405fa"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline_1",
+                  "operationId": "GetFileContentByPath",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('Sharepoint Site (new_SharepointSite)')",
+                  "path": "/@{items('For_each_file')?['{FullPath}']}",
+                  "inferContentType": true
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            },
+            "Create_a_new_document_request": {
+              "runAfter": {
+                "Get_file_content_using_path": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "b4a7814f-8415-4975-a524-6955ce94fcf2"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_commondataserviceforapps_1",
+                  "operationId": "CreateRecord",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                },
+                "parameters": {
+                  "entityName": "msfsi_documentrequests",
+                  "item/msdyn_dataqualitytype": 700610002,
+                  "item/msfsi_documentdefinition@odata.bind": "/msfsi_documentdefinitions(09748fd6-407b-ed11-81ad-000d3a58b59f)",
+                  "item/msdyn_energyprovidername": "Default",
+                  "item/msdyn_energytype": 700610000,
+                  "item/msfsi_hasautomaticflow": true,
+                  "item/msdyn_isrenewable": false,
+                  "item/msfsi_name": "Document request for @{items('For_each_file')?['{Name}']}",
+                  "item/msdyn_sustainabilityorganizationalunit@odata.bind": "/msdyn_sustainabilityorganizationalunits(b734369b-811c-ec11-b6e6-000d3a5bc635)",
+                  "item/msfsi_regarding_msdyn_facility_msdyn_facility@odata.bind": "/msdyn_facilities(77f92855-49f5-eb11-94ef-000d3a56a65c)"
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            },
+            "Move_file_to_Processed_Folder": {
+              "runAfter": {
+                "Upload_Document_to_Document_Request_to_Trigger_Processing": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "5b7cd36a-f182-4aa5-8812-9c7b9a01e5a7"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline_1",
+                  "operationId": "MoveFileAsync",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('Sharepoint Site (new_SharepointSite)')",
+                  "parameters/sourceFileId": "@items('For_each_file')?['{FullPath}']",
+                  "parameters/destinationDataset": "@parameters('Sharepoint Site (new_SharepointSite)')",
+                  "parameters/destinationFolderPath": "/Shared Documents/@{parameters('Site Folder Path  (new_SiteFolderPath)')}/Processed",
+                  "parameters/nameConflictBehavior": 1
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Create_Processed_Folder_If_Not_Exists": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "6acd3744-89bb-431c-b73b-1220ab81a308"
+          },
+          "type": "Foreach",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          }
+        },
+        "Get_List_by_Name_via_SharePoint_API": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "1bc140a7-4db6-49a3-9096-c759b59da220"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline_1",
+              "operationId": "HttpRequest",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "@parameters('Sharepoint Site (new_SharepointSite)')",
+              "parameters/method": "GET",
+              "parameters/uri": "_api/web/lists/GetByTitle('Documents')"
+            },
+            "authentication": {
+              "type": "Raw",
+              "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+            }
+          }
+        },
+        "Create_Processed_Folder_If_Not_Exists": {
+          "actions": {
+            "Get_Processed_Folder_if_Exists": {
+              "runAfter": {},
+              "metadata": {
+                "operationMetadataId": "eac0c145-d906-4e35-b1e2-ea7569e72219"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline_1",
+                  "operationId": "ListFolder",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('Sharepoint Site (new_SharepointSite)')",
+                  "id": "@{parameters('Site Folder Path  (new_SiteFolderPath)')}/Processed"
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            },
+            "Create_new_processed_folder_under_target_folder": {
+              "runAfter": {
+                "Get_Processed_Folder_if_Exists": [
+                  "Failed",
+                  "Skipped"
+                ]
+              },
+              "metadata": {
+                "operationMetadataId": "ea23efa1-712d-405e-8661-b55b80f47b5d"
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_sharepointonline_1",
+                  "operationId": "CreateNewFolder",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+                },
+                "parameters": {
+                  "dataset": "@parameters('Sharepoint Site (new_SharepointSite)')",
+                  "table": "@body('Get_List_by_Name_via_SharePoint_API')?['d']?['id']",
+                  "parameters/path": "@{parameters('Site Folder Path  (new_SiteFolderPath)')}/Processed"
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Get_Files_in_the_Folder": [
+              "Succeeded"
+            ]
+          },
+          "metadata": {
+            "operationMetadataId": "605726f2-643b-42a4-88bf-c683fec47954"
+          },
+          "type": "Scope"
+        }
+      }
+    },
+    "templateName": ""
+  },
+  "schemaVersion": "1.0.0.0"
+}
